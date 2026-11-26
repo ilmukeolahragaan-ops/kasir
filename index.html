@@ -106,6 +106,7 @@ canvas.pv{max-width:100%;background:#fff;border:1px solid var(--line);image-rend
 details summary{cursor:pointer;font-weight:600}
 ol.steps{margin:0;padding-left:20px;display:flex;flex-direction:column;gap:6px}
 @media (prefers-reduced-motion: reduce){*{transition:none!important;animation:none!important}}
+#fuelMode,#tokoMode{display:flex;flex-direction:column;gap:14px}
 </style>
 <header class="top">
   <h1 id="shopTitle">Kasir Toko</h1>
@@ -115,6 +116,29 @@ ol.steps{margin:0;padding-left:20px;display:flex;flex-direction:column;gap:6px}
 <main>
 <!-- KASIR -->
 <section class="view" id="v-kasir">
+  <div id="fuelMode" class="view" style="gap:14px">
+  <div class="card">
+    <div class="label">Jenis BBM</div>
+    <div class="seg" id="fGrade"></div>
+    <div id="fPumpWrap"><div class="label" style="margin-bottom:6px">Nomor pompa</div><div class="seg" id="fPump"></div></div>
+    <div class="seg" id="fMode"><button type="button" data-m="rp" aria-pressed="true">Isi Rupiah</button><button type="button" data-m="l" aria-pressed="false">Isi Liter</button></div>
+    <label class="f" id="fLbl"><span id="fLblT">Jumlah (Rp)</span><input id="fVal" inputmode="decimal" autocomplete="off" placeholder="0" style="font-size:22px;font-weight:700"></label>
+    <div class="quick" id="fQuick"></div>
+    <div class="stats">
+      <div class="stat"><span class="muted small">Volume</span><b id="fOutL">0,000 L</b></div>
+      <div class="stat"><span class="muted small">Bayar</span><b id="fOutRp">Rp0</b></div>
+    </div>
+    <div class="row">
+      <button class="btn fuel grow" id="fPrint" type="button" style="font-size:17px;padding:14px">Simpan &amp; cetak struk</button>
+      <button class="btn" id="fSave" type="button">Simpan saja</button>
+    </div>
+  </div>
+  <div class="card">
+    <div class="label">Pratinjau struk</div>
+    <div class="paper" id="fPreview"></div>
+  </div>
+  </div>
+  <div id="tokoMode" class="view" style="gap:14px" hidden>
   <div class="card">
     <div class="row">
       <input id="q" type="search" placeholder="Cari barang / bensin..." class="grow" autocomplete="off">
@@ -140,6 +164,7 @@ ol.steps{margin:0;padding-left:20px;display:flex;flex-direction:column;gap:6px}
       <button class="btn pri grow" id="payPrint" type="button">Simpan &amp; cetak struk</button>
       <button class="btn" id="payOnly" type="button">Simpan saja</button>
     </div>
+  </div>
   </div>
 </section>
 
@@ -255,6 +280,10 @@ pukul 07.00 - 21.00</textarea>
 <section class="view" id="v-atur" hidden>
   <div class="card">
     <h2>Printer</h2>
+    <label class="f">Tampilan kasir
+      <select id="stMode"><option value="bbm">Bensin saja (struk model SPBU)</option><option value="toko">Toko + bensin (pakai keranjang)</option></select>
+    </label>
+    <label class="f">Jumlah pompa / nozzle<select id="stPumps"><option>1</option><option>2</option><option>3</option><option>4</option><option>6</option><option>8</option></select></label>
     <label class="f">Cara menyambung
       <select id="stMethod">
         <option value="ble">Bluetooth langsung (Chrome)</option>
@@ -342,7 +371,7 @@ const DEF_PRODUCTS=[
  {id:'p7',name:'Kopi Sachet',cat:'toko',price:2000,unit:'pcs',code:''},
  {id:'p8',name:'Gula Pasir 1 kg',cat:'toko',price:18000,unit:'kg',code:''}
 ];
-const DEF_SET={name:'TOKO & PERTAMINI MAJU',addr:'Jl. Raya Contoh No. 1',phone:'0812-0000-0000',cashier:'',footer:'Terima kasih atas kunjungan Anda\nBarang yang sudah dibeli\ntidak dapat dikembalikan',
+const DEF_SET={name:'PERTAMINI MAJU',addr:'Jl. Raya Contoh No. 1',phone:'TLP 0812-0000-0000',cashier:'',footer:'TERIMAKASIH ATAS KUNJUNGAN ANDA',mode:'bbm',pumps:1,rno:0,
  method:(navigator.bluetooth?'rawbt':'rawbt'),cols:32,feed:3,logo:''};
 let products=load('kt_products',null); const firstRun=!products; if(!products){products=DEF_PRODUCTS.slice();save('kt_products',products)}
 let trx=load('kt_trx',[]);
@@ -355,7 +384,7 @@ let tT;function toast(m,ms){const t=$('toast');t.textContent=m;t.hidden=false;cl
 /* ---------- navigasi ---------- */
 function show(v){document.querySelectorAll('section.view').forEach(s=>s.hidden=s.id!=='v-'+v);
  document.querySelectorAll('#tabs button').forEach(b=>b.setAttribute('aria-current',b.dataset.v===v));
- if(v==='riwayat')renderHistory(); if(v==='produk')renderProdList(); if(v==='cetak')renderFreePreview(); if(v==='atur')fillSettings();
+ if(v==='kasir'&&S.mode==='bbm')renderFuel();if(v==='riwayat')renderHistory(); if(v==='produk')renderProdList(); if(v==='cetak')renderFreePreview(); if(v==='atur')fillSettings();
  window.scrollTo(0,0)}
 $('tabs').addEventListener('click',e=>{const b=e.target.closest('button');if(b)show(b.dataset.v)});
 
@@ -501,7 +530,7 @@ $('quickPay').addEventListener('click',e=>{const b=e.target.closest('button');if
 let clr=0;$('clearCart').addEventListener('click',()=>{if(!cart.length)return;if(Date.now()-clr>3000){clr=Date.now();toast('Ketuk "Kosongkan" sekali lagi untuk menghapus semua isi keranjang');return}cart=[];$('paid').value='';renderCart()});
 
 function nextId(){const d=new Date(),k=dayKey(d).replace(/-/g,'');const n=trx.filter(t=>t.id.indexOf(k)===4).length+1;return 'TRX-'+k+'-'+String(n).padStart(3,'0')}
-function receiptDoc(t){const d=Doc();if(logoC)d.img(logoC);d.tx(S.name,{a:1,big:true});if(S.addr)d.tx(S.addr,{a:1});if(S.phone)d.tx(S.phone,{a:1});d.hr();
+function receiptDoc(t){if(t.style==='spbu')return spbuDoc(t);const d=Doc();if(logoC)d.img(logoC);d.tx(S.name,{a:1,big:true});if(S.addr)d.tx(S.addr,{a:1});if(S.phone)d.tx(S.phone,{a:1});d.hr();
  d.lr('No',t.id);d.lr(fmtDT(t.ts),t.cashier?'Kasir: '+t.cashier:'');d.hr();
  t.items.forEach(c=>{d.tx(c.name);d.lr(c.cat==='bbm'?' '+fmtL(c.qty)+' L x '+rpn(c.price):' '+c.qty+' '+c.unit+' x '+rpn(c.price),rpn(c.sub))});
  d.hr();d.lr('TOTAL',rp(t.total),{b:true});d.lr('Bayar',rp(t.paid));d.lr('Kembali',rp(t.change));
@@ -515,6 +544,39 @@ async function checkout(doPrint){if(!cart.length){toast('Keranjang masih kosong'
 $('payPrint').addEventListener('click',()=>checkout(true));
 $('payOnly').addEventListener('click',()=>checkout(false));
 
+
+/* ---------- mode bensin (struk model SPBU) ---------- */
+const vol3=l=>(Math.floor(l*1000+1e-6)/1000).toFixed(3).replace('.',',');
+function spbuDoc(t){const d=Doc(),it=t.items[0],w=Math.min(d.C,28);if(logoC)d.img(logoC);d.tx(S.name,{big:true});if(S.addr)d.tx(S.addr);d.blank();if(S.phone){d.tx(S.phone);d.blank()}
+ const dt=fmtDT(t.ts);d.raw(dt.slice(0,10)+' '.repeat(Math.max(1,w-15))+dt.slice(11));d.raw('Receipt No.:'+t.rno);d.blank();
+ const kv=(k,v)=>{v=String(v);d.raw(k+' '.repeat(Math.max(1,w-k.length-v.length))+v)};
+ kv('Pump No.',pad2(t.pump||1));kv('Grade',ascii(it.name).toUpperCase());kv('Volume(L)',vol3(it.qty));kv('Unit Price (RP./L)',String(it.price));kv('Amount',String(Math.round(it.sub)));
+ d.blank();if(S.footer)d.tx(S.footer);return d}
+let fG=null,fP=1,fM='rp';
+const fuelProds=()=>products.filter(p=>p.cat==='bbm');
+function applyMode(){$('fuelMode').hidden=S.mode!=='bbm';$('tokoMode').hidden=S.mode==='bbm';if(S.mode==='bbm')renderFuel()}
+function renderFuel(){const fp=fuelProds();if(!fp.find(p=>p.id===fG))fG=fp[0]?fp[0].id:null;
+ $('fGrade').innerHTML=fp.length?fp.map(p=>`<button type="button" data-id="${p.id}" aria-pressed="${p.id===fG}">${esc(p.name)}<br><small class="money">${rp(p.price)}/L</small></button>`).join(''):'<div class="empty" style="flex:1">Belum ada BBM. Tambahkan di menu Barang dengan jenis "Bensin / BBM".</div>';
+ const n=S.pumps|0||1;if(fP>n)fP=1;$('fPumpWrap').hidden=n<=1;$('fPump').innerHTML=Array.from({length:n},(_,i)=>`<button type="button" data-n="${i+1}" aria-pressed="${i+1===fP}">${pad2(i+1)}</button>`).join('');
+ fQuick();fCalc()}
+function fQuick(){const q=fM==='rp'?[10000,20000,30000,50000,100000,150000,200000,300000]:[1,2,3,5,10,15,20,30];
+ $('fQuick').innerHTML=q.map(v=>`<button class="btn sm" type="button" data-v="${v}">${fM==='rp'?(v/1000)+' rb':v+' L'}</button>`).join('');$('fLblT').textContent=fM==='rp'?'Jumlah (Rp)':'Jumlah liter'}
+function nextRno(){return String((S.rno|0)%9999+1).padStart(4,'0')}
+function fDraft(){const p=products.find(x=>x.id===fG);if(!p)return null;const raw=$('fVal').value;let L,sub;
+ if(fM==='rp'){sub=num(raw);L=Math.floor(sub/p.price*1000+1e-6)/1000}else{L=parseFloat(String(raw).replace(',','.'))||0;sub=Math.round(L*p.price)}
+ return{id:nextId(),rno:nextRno(),ts:Date.now(),pump:fP,style:'spbu',cashier:S.cashier,items:[{name:p.name,cat:'bbm',unit:'L',price:p.price,qty:L,sub}],total:sub,paid:sub,change:0}}
+function fCalc(){const t=fDraft();if(!t){$('fPreview').innerHTML='';return}const it=t.items[0];$('fOutL').textContent=vol3(it.qty)+' L';$('fOutRp').textContent=rp(it.sub);renderPaper($('fPreview'),spbuDoc(t))}
+$('fGrade').addEventListener('click',e=>{const b=e.target.closest('button');if(!b)return;fG=b.dataset.id;$('fGrade').querySelectorAll('button').forEach(x=>x.setAttribute('aria-pressed',x===b));fCalc()});
+$('fPump').addEventListener('click',e=>{const b=e.target.closest('button');if(!b)return;fP=+b.dataset.n;$('fPump').querySelectorAll('button').forEach(x=>x.setAttribute('aria-pressed',x===b));fCalc()});
+$('fMode').addEventListener('click',e=>{const b=e.target.closest('button');if(!b)return;fM=b.dataset.m;$('fMode').querySelectorAll('button').forEach(x=>x.setAttribute('aria-pressed',x===b));$('fVal').value='';fQuick();fCalc()});
+$('fVal').addEventListener('input',()=>{if(fM==='rp'){const n=num($('fVal').value);$('fVal').value=n?rpn(n):''}fCalc()});
+$('fQuick').addEventListener('click',e=>{const b=e.target.closest('button');if(!b)return;$('fVal').value=fM==='rp'?rpn(+b.dataset.v):b.dataset.v;fCalc()});
+async function fSubmit(doPrint){const t=fDraft();if(!t){toast('Pilih jenis BBM dulu');return}if(!(t.total>0)||!(t.items[0].qty>0)){toast('Isi jumlah Rupiah atau liter dulu');return}
+ S.rno=(S.rno|0)%9999+1;save('kt_settings',S);trx.push(t);if(trx.length>5000)trx=trx.slice(-5000);save('kt_trx',trx);$('fVal').value='';
+ toast('Tersimpan: '+t.items[0].name+' '+vol3(t.items[0].qty)+' L, '+rp(t.total),3500);fCalc();if(doPrint)await printDoc(spbuDoc(t))}
+$('fPrint').addEventListener('click',()=>fSubmit(true));$('fSave').addEventListener('click',()=>fSubmit(false));
+setInterval(()=>{if(!$('v-kasir').hidden&&S.mode==='bbm')fCalc()},30000);
+
 /* ---------- barang ---------- */
 let editId=null;
 function renderProdList(){$('prodCount').textContent=products.length+' barang';
@@ -527,7 +589,7 @@ $('pfPrice').addEventListener('input',()=>{const n=num($('pfPrice').value);$('pf
 $('pfSave').addEventListener('click',()=>{const name=$('pfName').value.trim(),price=num($('pfPrice').value),catv=$('pfCat').value;
  if(!name){toast('Nama barang masih kosong');return}if(!price){toast('Harga masih kosong');return}
  const unit=catv==='bbm'?'L':($('pfUnit').value.trim()||'pcs');const p={id:editId||uid(),name,cat:catv,price,unit,code:$('pfCode').value.trim()};
- if(editId){const i=products.findIndex(x=>x.id===editId);products[i]=p}else products.push(p);save('kt_products',products);toast(editId?'Barang diubah':'Barang ditambahkan');resetForm();renderProdList();renderGrid()});
+ if(editId){const i=products.findIndex(x=>x.id===editId);products[i]=p}else products.push(p);save('kt_products',products);toast(editId?'Barang diubah':'Barang ditambahkan');resetForm();renderProdList();renderGrid();renderFuel()});
 $('pfCancel').addEventListener('click',resetForm);
 let delAsk={};
 $('prodList').addEventListener('click',e=>{const b=e.target.closest('button');if(!b)return;const id=b.closest('.it').dataset.id;const p=products.find(x=>x.id===id);if(!p)return;
@@ -577,14 +639,16 @@ const HELP={
  rawbt:'<b>Paling cocok untuk MPT-II.</b><ol class="steps"><li>Pasang aplikasi gratis <b>RawBT</b> dari Play Store.</li><li>Nyalakan printer, lalu pasangkan (pairing) di Pengaturan &gt; Bluetooth HP. PIN biasanya 0000 atau 1234.</li><li>Buka RawBT, pilih printer MPT-II di sana.</li><li>Kembali ke sini dan tekan Tes cetak. Struk akan dikirim lewat RawBT.</li></ol>',
  ble:'Untuk printer yang punya Bluetooth 4.0 (BLE). Tekan Sambungkan, lalu pilih printer di daftar (biasanya bernama MPT-II, Printer001 atau BlueTooth Printer). Kalau printer tidak muncul di daftar, printer Anda memakai Bluetooth klasik, jadi pilih cara <b>RawBT</b>.',
  serial:'Untuk Chrome Android versi terbaru. Pairing dulu printer di Pengaturan &gt; Bluetooth HP (PIN 0000 atau 1234), lalu tekan Sambungkan dan pilih printernya. Kalau gagal, pilih cara <b>RawBT</b>.'};
-function fillSettings(){$('stMethod').value=S.method;$('methodHelp').innerHTML=HELP[S.method];$('stCols').value=String(S.cols);$('stFeed').value=String(S.feed);
+function fillSettings(){$('stMode').value=S.mode;$('stPumps').value=String(S.pumps);$('stMethod').value=S.method;$('methodHelp').innerHTML=HELP[S.method];$('stCols').value=String(S.cols);$('stFeed').value=String(S.feed);
  $('stName').value=S.name;$('stAddr').value=S.addr;$('stPhone').value=S.phone;$('stCashier').value=S.cashier;$('stFooter').value=S.footer;drawLogoPv()}
 function drawLogoPv(){const c=$('logoPv');if(logoC){c.width=logoC.width;c.height=logoC.height;c.getContext('2d').drawImage(logoC,0,0);c.hidden=false;$('stLogoDel').hidden=false}else{c.hidden=true;$('stLogoDel').hidden=true}}
 function saveSet(){save('kt_settings',S);$('shopTitle').textContent=S.name||'Kasir Toko';updChip()}
 $('stMethod').addEventListener('change',()=>{S.method=$('stMethod').value;$('methodHelp').innerHTML=HELP[S.method];saveSet()});
+$('stMode').addEventListener('change',()=>{S.mode=$('stMode').value;saveSet();applyMode()});
+$('stPumps').addEventListener('change',()=>{S.pumps=+$('stPumps').value;saveSet();renderFuel()});
 $('stCols').addEventListener('change',()=>{S.cols=+$('stCols').value;saveSet()});
 $('stFeed').addEventListener('change',()=>{S.feed=+$('stFeed').value;saveSet()});
-$('stSave').addEventListener('click',()=>{S.name=$('stName').value.trim()||'TOKO SAYA';S.addr=$('stAddr').value.trim();S.phone=$('stPhone').value.trim();S.cashier=$('stCashier').value.trim();S.footer=$('stFooter').value.trim();saveSet();toast('Pengaturan disimpan')});
+$('stSave').addEventListener('click',()=>{setTimeout(fCalc,0);S.name=$('stName').value.trim()||'TOKO SAYA';S.addr=$('stAddr').value.trim();S.phone=$('stPhone').value.trim();S.cashier=$('stCashier').value.trim();S.footer=$('stFooter').value.trim();saveSet();toast('Pengaturan disimpan')});
 $('stLogo').addEventListener('change',async e=>{const f=e.target.files[0];if(!f)return;try{const img=await loadImg(await fileToDataURL(f));const c=mono(img,Math.min(256,img.width),'thr',128);S.logo=c.toDataURL('image/png');await loadLogo();saveSet();drawLogoPv();toast('Logo disimpan')}catch(er){toast(er.message)}});
 $('stLogoDel').addEventListener('click',()=>{S.logo='';logoC=null;saveSet();drawLogoPv();$('stLogo').value=''});
 $('stConnect').addEventListener('click',async()=>{try{await connect()}catch(e){toast(e.message||String(e),6000)}});
@@ -597,7 +661,7 @@ let bkAsk=0;$('bkLoad').addEventListener('click',()=>{const t=$('bkText');if(t.h
  products=d.products||[];trx=d.trx||[];S=Object.assign({},DEF_SET,d.settings||{});save('kt_products',products);save('kt_trx',trx);saveSet();loadLogo().then(()=>{fillSettings();renderGrid();toast('Data berhasil dipulihkan')})});
 
 /* ---------- mulai ---------- */
-$('shopTitle').textContent=S.name;renderGrid();renderCart();updChip();loadLogo();
+$('shopTitle').textContent=S.name;renderGrid();renderCart();updChip();applyMode();loadLogo().then(()=>{if(S.mode==='bbm')fCalc()});
 if('serviceWorker' in navigator&&location.protocol==='https:'&&!/claude\.ai|claudeusercontent/.test(location.host))navigator.serviceWorker.register('sw.js').catch(()=>{});
 })();
 </script>
